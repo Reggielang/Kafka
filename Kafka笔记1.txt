@@ -1,0 +1,91 @@
+Kafka是一个分布式的基于发布/订阅模式的消息队列（Message Queue），主要应用于大数据实时处理领域
+读写数据快
+
+使用消息队列的好处
+1）解耦
+允许你独立的扩展或修改两边的处理过程，只要确保它们遵守同样的接口约束。
+2）可恢复性
+系统的一部分组件失效时，不会影响到整个系统。消息队列降低了进程间的耦合度，所以即使一个处理消息的进程挂掉，加入队列中的消息仍然可以在系统恢复后被处理。
+3）缓冲
+有助于控制和优化数据流经过系统的速度，解决生产消息和消费消息的处理速度不一致的情况。
+4）灵活性 & 峰值处理能力
+在访问量剧增的情况下，应用仍然需要继续发挥作用，但是这样的突发流量并不常见。如果为以能处理这类峰值访问为标准来投入资源随时待命无疑是巨大的浪费。使用消息队列能够使关键组件顶住突发的访问压力，而不会因为突发的超负荷的请求而完全崩溃。
+5）异步通信
+很多时候，用户不想也不需要立即处理消息。消息队列提供了异步处理机制，允许用户把一个消息放入队列，但并不立即处理它。想向队列中放入多少消息就放多少，然后在需要的时候再去处理它们。
+
+消息队列的两种模式
+（1）点对点模式（一对一，消费者主动拉取数据，消息收到后消息清除）
+消息生产者生产消息发送到Queue中，然后消息消费者从Queue中取出并且消费消息。
+消息被消费以后，queue中不再有存储，所以消息消费者不可能消费到已经被消费的消息。Queue支持存在多个消费者，但是对一个消息而言，只会有一个消费者可以消费。
+
+2）发布/订阅模式 --Kafka（一对多，消费者消费数据之后不会清除消息）消费者一般是拉取消息
+消息生产者（发布）将消息发布到topic中，同时有多个消息消费者（订阅）消费该消息。和点对点方式不同，发布到topic的消息会被所有订阅者消费。
+
+一、Kafka基础架构
+  1) Kafka集群
+     Kafka集群是由多个Broker组成的。 每个Broker拥有唯一的id.
+     Kafka集群中有多个Topic.每个Topic可有多个分区(partition),每个分区可有多个副本(replication).
+     一个Topic的多个分区可以存在到一个Broker中。 一个分区的多个副本只能在不同的broker存在.
+     一个分区的多个副本由一个leader和多个follower组成.
+     生产者和消费者读写数据面向leader. follower主要同步leader的数据。以及当leader故障后，follower代替leader工作.
+
+  2) 生产者
+     生成者的功能就是往topic中发布消息.
+
+  3) 消费者
+     消费者的功能就是从topic中消费消息.
+     消费者消费消息是以消费者组为单位进行的.
+     一个消费者组内的一个消费者可以同时消费一个topic中多个分区的消息. 
+     一个Topic中的一个分区的消息同时只能被一个消费者组中的一个消费者消费.
+
+  4) Zookeeper
+     Kafka集群的工作需要依赖zookeeper,例如每个broker启动后需要向zookeeper注册. 
+     Broker中大哥(controller)的选举(争抢策略)
+     Kafka 0.9版本之前消费者组的offset维护在zookeeper中. 0.9版本之后维护在kafka内部.
+
+二、安装，配置文件修改，环境变量等。
+#broker的全局唯一编号，不能重复（每台机器不一样 ）
+broker.id=0
+
+#kafka消息存放的路径
+log.dirs=/opt/module/kafka/logs
+
+#配置连接Zookeeper集群地址
+zookeeper.connect=hadoop102:2181,hadoop103:2181,hadoop104:2181
+
+注意：要先启动zookeeper再启动Kafka，关闭时先关闭Kafka再关闭zookeeper
+（起不起来看日志，可能zookeeper和Kafka里的cluster不一致，先删除meta.properties）
+三、命令行操作
+  1) 查看topic 列表
+     kafka-topics.sh  --list --bootstrap-server hadoop102:9092
+  2) 创建topic
+     kafka-topics.sh --create --bootstrap-server hadoop102:9092 --topic first
+（指定分区和副本）
+     kafka-topics.sh --create --bootstrap-server hadoop102:9092 --topic second --partitions 2 --replication-factor 3
+
+  3) 查看Topic详情
+     kafka-topics.sh --describe --bootstrap-server hadoop102:9092 --topic first 
+
+  4) 修改Topic的分区数(只能改大)
+     kafka-topics.sh --describe --bootstrap-server hadoop102:9092 --topic first
+
+  5) 删除Topic
+     kafka-topics.sh --delete --bootstrap-server hadoop102:9092 --topic first    
+  
+  6) 生产者
+     kafka-console-producer.sh  --broker-list hadoop102:9092 --topic first   
+
+  7) 消费者消费数据offset重置问题:
+     新启动的消费者组中的消费者为何消费不到topic中的所有数据???
+
+消费数据是分区有序的，不一定是整体有序的
+
+  8) 消费者
+      kafka-console-consumer.sh --bootstrap-server hadoop102:9092 --topic first
+  （从开始消费数据）
+      kafka-console-consumer.sh --bootstrap-server hadoop102:9092 --topic first --from-beginning 
+
+  9) 消费者组 --数据只能由一个消费者组内的一个消费者消费！
+     kafka-console-consumer.sh --bootstrap-server hadoop102:9092 --topic first --consumer.config /opt/module/kafka_2.11-2.4.1/config/consumer.properties     
+
+     kafka-console-consumer.sh --bootstrap-server hadoop102:9092 --topic first --group aa
