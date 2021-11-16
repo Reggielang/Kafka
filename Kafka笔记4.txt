@@ -1,0 +1,287 @@
+六、Flume和Kafka对接
+ 1) KafkaSource 
+  用于从kafka中读取数据.
+  KafkaSource对于flume来讲是一个source的角色. 对于Kafka来讲，是一个消费者的角色.
+
+ 2) KafkaSink
+ 用于往Kafka中写数据
+ KafkaSink对于flume来讲是一个sink的角色,对于kafka来讲，是一个生产者的角色. 
+
+ 3) KafkaChannel 
+    ① 作为一个基本的channel来使用. 
+      xxxSource -> KafkaChannel -> xxxSink 
+    ② 支持往kafka中写入数据
+      xxxSource -> KafkaChannel 
+    ③ 支持从Kafka中读取数据
+      kafkaChannel -> xxxSink
+
+2. Flume -> Kafka :   KafkaSink  
+netcat-flume-kafka.conf
+
+#Named
+a1.sources = r1 
+a1.channels = c1 
+a1.sinks = k1 
+
+#Source
+a1.sources.r1.type = netcat
+a1.sources.r1.bind = 0.0.0.0
+a1.sources.r1.port = 6666 
+
+#Channel 
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 10000
+a1.channels.c1.transactionCapacity = 100
+
+#Sink
+a1.sinks.k1.type = org.apache.flume.sink.kafka.KafkaSink
+a1.sinks.k1.kafka.bootstrap.servers = hadoop102:9092,hadoop103:9092,hadoop104:9092
+a1.sinks.k1.kafka.topic = flumetopic
+a1.sinks.k1.kafka.flumeBatchSize = 100
+#(传入Kafka需不需要保留flume的数据格式header，body)
+a1.sinks.k1.useFlumeEventFormat = true
+a1.sinks.k1.kafka.producer.acks = -1
+
+#Bind
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+
+运行: flume-ng agent -c $FLUME_HOME/conf -f $FLUME_HOME/jobs/kafka/netcat-flume-kafka.conf -n a1 -Dflume.root.logger=INFO,console
+
+3 Flume -> Kafka :   KafkaSink  多topic支持
+将flume采集的数据按照不同的类型输入到不同的topic中
+netcat-flume-kafkatopic.conf
+
+#Named
+a1.sources = r1 
+a1.channels = c1 
+a1.sinks = k1 
+
+#Source
+a1.sources.r1.type = netcat
+a1.sources.r1.bind = 0.0.0.0
+a1.sources.r1.port = 6666 
+
+#Interceptor
+a1.sources.r1.interceptors = i1
+a1.sources.r1.interceptors.i1.type = Flumeinterceptor.Datavalueinterceptor$MyBuilder
+
+#Channel 
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 10000
+a1.channels.c1.transactionCapacity = 100
+
+#Sink
+a1.sinks.k1.type = org.apache.flume.sink.kafka.KafkaSink
+a1.sinks.k1.kafka.bootstrap.servers = hadoop102:9092,hadoop103:9092,hadoop104:9092
+a1.sinks.k1.kafka.topic = topicother
+a1.sinks.k1.kafka.flumeBatchSize = 100
+#(传入Kafka需不需要保留flume的数据格式header，body)
+a1.sinks.k1.useFlumeEventFormat = true
+a1.sinks.k1.kafka.producer.acks = -1
+
+#Bind
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+
+4. Kafka->Flume :Kafka Source
+kafka-flume-logger.conf
+
+#Named
+a1.sources = r1 
+a1.channels = c1 
+a1.sinks = k1 
+
+#Source
+a1.sources.r1.type = org.apache.flume.source.kafka.KafkaSource
+a1.sources.r1.kafka.bootstrap.servers = hadoop102:9092,hadoop103:9092
+a1.sources.r1.kafka.topics = first
+a1.sources.r1.kafka.consumer.group.id = flume
+a1.sources.r1.batchSize = 100
+a1.sources.r1.useFlumeEventFormat = false
+
+#Channel 
+a1.channels.c1.type = memory
+a1.channels.c1.capacity = 10000
+a1.channels.c1.transactionCapacity = 100
+
+#Sink
+a1.sinks.k1.type = logger
+
+#Bind
+a1.sources.r1.channels = c1
+a1.sinks.k1.channel = c1
+
+运行: flume-ng agent -c $FLUME_HOME/conf -f $FLUME_HOME/jobs/kafka/kafka-flume-logger.conf -n a1 -Dflume.root.logger=INFO,console
+
+5. KafkaChannel -> xxxSink
+
+kafkachannel-flume-logger.conf
+
+#Named
+a1.channels = c1 
+a1.sinks = k1 
+
+#Source
+
+#Channel 
+a1.channels.c1.type = org.apache.flume.channel.kafka.KafkaChannel
+a1.channels.c1.kafka.bootstrap.servers = hadoop102:9092,hadoop103:9092,hadoop104:9092
+a1.channels.c1.kafka.topic = first 
+a1.channels.c1.kafka.consumer.group.id = flume
+a1.channels.c1.kafka.consumer.auto.offset.reset = latest
+a1.channels.c1.parseAsFlumeEvent = false
+
+#Sink
+a1.sinks.k1.type = logger
+
+#Bind
+a1.sinks.k1.channel = c1
+
+运行: flume-ng agent -c $FLUME_HOME/conf -f $FLUME_HOME/jobs/kafka/kafkachannel-flume-logger.conf -n a1 -Dflume.root.logger=INFO,console
+
+
+6. xxxSource -> KafkaChannel 
+
+netcat-flume-kafkachannel.conf
+
+#Named
+a1.sources = r1
+a1.channels = c1 
+
+#Source
+a1.sources.r1.type = netcat
+a1.sources.r1.bind = 0.0.0.0
+a1.sources.r1.port = 6666 
+
+#Channel 
+a1.channels.c1.type = org.apache.flume.channel.kafka.KafkaChannel
+a1.channels.c1.kafka.bootstrap.servers = hadoop102:9092,hadoop103:9092,hadoop104:9092
+a1.channels.c1.kafka.topic = first 
+a1.channels.c1.parseAsFlumeEvent = false
+
+#Sink
+
+#Bind
+a1.sources.r1.channels = c1
+
+运行: flume-ng agent -c $FLUME_HOME/conf -f $FLUME_HOME/jobs/kafka/netcat-flume-kafkachannel.conf -n a1 -Dflume.root.logger=INFO,console
+
+七、Kafka监控
+安装Kafka Eagle
+
+修改一些配置
+1）修改kafka启动命令
+修改kafka-server-start.sh命令中
+if [ "x$KAFKA_HEAP_OPTS" = "x" ]; then
+    export KAFKA_HEAP_OPTS="-Xmx1G -Xms1G"
+fi
+为
+if [ "x$KAFKA_HEAP_OPTS" = "x" ]; then
+    export KAFKA_HEAP_OPTS="-server -Xms2G -Xmx2G -XX:PermSize=128m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:ParallelGCThreads=8 -XX:ConcGCThreads=5 -XX:InitiatingHeapOccupancyPercent=70"
+    export JMX_PORT="9999"
+    #export KAFKA_HEAP_OPTS="-Xmx1G -Xms1G"
+fi
+注意：修改之后在启动Kafka之前要分发之其他节点
+
+2）给启动文件执行权限
+chmod 777 ke.sh
+
+8）修改配置文件 conf/system-config.properties
+######################################
+# multi zookeeper&kafka cluster list
+######################################
+kafka.eagle.zk.cluster.alias=cluster1
+cluster1.zk.list=hadoop102:2181,hadoop103:2181,hadoop104:2181
+
+######################################
+# kafka offset storage
+######################################
+cluster1.kafka.eagle.offset.storage=kafka
+
+######################################
+# enable kafka metrics
+######################################
+kafka.eagle.metrics.charts=true
+kafka.eagle.sql.fix.error=false
+
+######################################
+# kafka jdbc driver address
+######################################
+kafka.eagle.driver=com.mysql.jdbc.Driver
+kafka.eagle.url=jdbc:mysql://hadoop102:3306/ke?useUnicode=true&characterEncoding=UTF-8&zeroDateTimeBehavior=convertToNull
+kafka.eagle.username=root
+kafka.eagle.password=123456
+
+9）添加环境变量
+export KE_HOME=/opt/module/eagle
+export PATH=$PATH:$KE_HOME/bin
+
+注意：source /etc/profile
+
+八、Kafka面试题
+7.1 面试问题
+1）Kafka中的ISR(InSyncRepli)、OSR(OutSyncRepli)、AR(AllRepli)代表什么？
+ISR：与leader保持同步的follower集合
+OSR: 没有与leader保持同步的follower集合
+AR：分区的所有副本
+
+2）Kafka中的HW、LEO等分别代表什么？
+LEO：没个副本的最后条消息的offset
+HW：一个分区中所有副本最小的offset
+
+3）Kafka中是怎么体现消息顺序性的？
+每个分区内，每条消息都有一个offset，故只能保证分区内有序。
+
+4）Kafka中的分区器、序列化器、拦截器是否了解？它们之间的处理顺序是什么？
+ 拦截器 -> 序列化器 -> 分区器
+
+5）Kafka生产者客户端的整体结构是什么样子的？使用了几个线程来处理？分别是什么？
+ main线程和sender线程，main线程进行生产数据，要经过拦截器，序列化器，分区器，然后进入一个
+类似于channel的地方，然后sender来从channel这个地方拉取数据
+
+6）“消费组中的消费者个数如果超过topic的分区，那么就会有消费者消费不到数据”这句话是否正确？
+正确
+
+7）消费者提交消费位移(offset)时提交的是当前消费到的最新消息的offset还是offset+1？
+offset+1
+
+8）有哪些情形会造成重复消费？
+先消费，后提交offset，有可能造成数据的重复
+
+9）那些情景会造成消息漏消费？
+先提交offset，后消费，有可能造成漏消费
+
+10）当你使用kafka-topics.sh创建（删除）了一个topic之后，Kafka背后会执行什么逻辑？
+    1）会在zookeeper中的/brokers/topics节点下创建一个新的topic节点，如：/brokers/topics/first
+    2）触发Controller的监听程序
+    3）kafka Controller 负责topic的创建工作，并更新metadata cache
+
+11）topic的分区数可不可以增加？如果可以怎么增加？如果不可以，那又是为什么？
+可以增加
+12）topic的分区数可不可以减少？如果可以怎么减少？如果不可以，那又是为什么？
+不可以，因为原有的数据不好处理
+
+13）Kafka有内部的topic吗？如果有是什么？有什么所用？
+__consumer_offsets,保存消费者offset
+
+14）Kafka分区分配的概念？
+ 一个topic多个分区，一个消费者组多个消费者，故需要将分区分配个消费者(roundrobin、range)
+
+15）简述Kafka的日志目录结构？
+ 每个分区对应一个文件夹，文件夹的命名为topic-0，topic-1，内部为.log和.index文件
+
+16）如果我指定了一个offset，Kafka Controller怎么查找到对应的消息？
+根据offset判断在那个片段里面，然后定位到index文件，找一下消息在文件中的位置
+
+17）聊一聊Kafka Controller的作用？
+负责管理集群broker的上下线，所有topic的分区副本分配和leader选举等工作。
+
+18）Kafka中有那些地方需要选举？这些地方的选举策略又有哪些？
+partition leader（ISR），controller（先到先得）
+
+19）失效副本是指什么？有那些应对措施？
+不能及时与leader同步，暂时踢出ISR，等其追上leader之后再重新加入
+
+20）Kafka的哪些设计让它有如此高的性能？
+分区，对文件是追加末尾进行写入。
